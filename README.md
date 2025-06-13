@@ -25,9 +25,42 @@ The framework is built around a few key components:
 
 ## 🚀 Installation
 
-```bash
-pip install pureshell
-```
+To use `pureshell` in your project, it's highly recommended to work within a virtual environment.
+
+1. **Create and activate a virtual environment:**
+
+   ```bash
+   # Windows
+   python -m venv .venv
+   .venv\\Scripts\\activate
+
+   # macOS/Linux
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. **Install from PyPI (for users of the library):**
+
+   ```bash
+   pip install pureshell
+   ```
+
+   Alternatively, if you have a `requirements.txt` file that includes `pureshell`:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **For development (if you've cloned this repository):**
+
+   Install the project and its development dependencies:
+
+   ```bash
+   pip install -e .
+   pip install -r requirements-dev.txt
+   ```
+
+   This will install the project in editable mode and all tools needed for testing, linting, formatting, etc.
 
 ## 🚀 Usage
 
@@ -139,23 +172,83 @@ In addition, this addresses linter warnings that would be raised if `pass` or el
 
 This repository includes complete, runnable examples to demonstrate the pattern. A helper script is provided to easily run them.
 
+First, ensure you have installed the project in editable mode and the development dependencies (see [Installation](#installation)).
+
+Then, run the examples module:
+
 ```bash
-python -m example.run
+python -m examples.run
 ```
 
 This will present a menu where you can choose between:
 
 * **Shopping Cart**: The simple e-commerce example detailed above.
-
 * **Pygame Space Shooter**: A more advanced example showing how `pureshell` can be used to completely separate game logic from the Pygame rendering engine, making the logic highly testable.
 
-## ✅ Running Tests
+## ✅ Running Tests & Quality Checks
 
-The project includes a comprehensive test suite. To run the tests, navigate to the project root directory and run the test discovery command:
+This project uses `pytest` for testing, `flake8` for linting, `black` for formatting, `mypy` for type checking, and `pre-commit` to automate these checks.
 
-```bash
-python -m unittest discover tests
-```
+1. **Ensure development dependencies are installed:**
+
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+2. **Run all tests with coverage:**
+
+   ```bash
+   pytest
+   ```
+
+   Coverage reports are generated in HTML format in the `htmlcov/` directory and also printed to the console.
+
+3. **Run linters and formatters manually:**
+
+   ```bash
+   flake8 .
+   black .
+   isort .
+   mypy .
+   ```
+
+4. **Use pre-commit hooks (recommended):**
+
+   Pre-commit hooks will automatically run checks before each commit.
+
+   ```bash
+   pre-commit install
+   ```
+
+   Now, `flake8`, `black`, `isort`, and `mypy` will run on staged files automatically when you commit. If they find issues, the commit will be aborted, allowing you to fix them.
+
+## 📚 Building Documentation
+
+Documentation is built using Sphinx.
+
+1. **Ensure development dependencies are installed:**
+
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+2. **Build the HTML documentation:**
+
+   ```bash
+   sphinx-build -b html docs docs/_build/html
+   ```
+
+   The generated HTML will be in `docs/_build/html/index.html`.
+
+## CI Pipeline
+
+This project uses GitHub Actions for Continuous Integration. The workflow is defined in `.github/workflows/ci.yml` and includes:
+
+* Linting with Flake8
+* Formatting checks with Black and isort
+* Type checking with MyPy
+* Running tests with Pytest and generating coverage reports
+* Uploading coverage reports to Codecov (if `CODECOV_TOKEN` is set in repository secrets)
 
 ## 🗺️ Roadmap / Future Iterations
 
