@@ -1,0 +1,153 @@
+"""PureShell: A Python Design Pattern for Stateful Entities with Pure Functions"""
+# __init__.py
+# pylint: disable=line-too-long,protected-access
+from typing import Callable, Any, Generic, TypeVar, overload, Union
+
+# ==============================================================================
+# --- 1. Generic Type Variables & Metaprogramming Tools ---
+# These are the core tools that power the pattern.
+# ==============================================================================
+
+_ReturnType = TypeVar("_ReturnType") #pylint: disable=invalid-name
+_sentinel = object()  # A unique sentinel value for default arguments
+
+class GetAttrNotFoundError(AttributeError):
+    """Custom error raised when an attribute is not found in the rules provider."""
+    def __init__(self, attr_name: str, instance: Any):
+        super().__init__(f"Attribute '{attr_name}' listed in @shell_method not found on instance of '{instance.__class__.__name__}'."
+    )
+
+class PureShellMethod(Generic[_ReturnType]):
+    """
+    A generic descriptor that creates a "lazy" partial function.
+
+    It resolves the pure function it's linked to at call time, allowing it
+    to fetch live data from the instance it's attached to.
+    """
+    def __init__(self, func_or_name: Callable[..., Any] | str, live_attr_names: str | tuple[str, ...], mutates: bool = False):
+        """
+        Initializes the PureShellMethod descriptor.
+
+        Args:
+            func_or_name: The pure function to call, or its name as a string.
+            live_attr_names: A string or tuple of strings specifying the instance
+                             attributes to pass as arguments to the pure function.
+            mutates: If True, the method is treated as a state mutation. The
+                     result of the pure function will overwrite the first
+                     live attribute, and the method will return None.
+        """
+        self.func_or_name = func_or_name
+        self.live_attr_names = (live_attr_names,) if isinstance(live_attr_names, str) else live_attr_names
+        self.mutates = mutates
+
+    @overload
+    def __get__(self, instance: None, owner: type) -> "PureShellMethod[_ReturnType]": ...
+
+    @overload
+    def __get__(self, instance: object, owner: type) -> Callable[..., Union[_ReturnType, None]]: ...
+
+    def __get__(self, instance: object | None, owner: type) -> Union[Callable[..., Union[_ReturnType, None]], "PureShellMethod[_ReturnType]"]:
+        """
+        The core of the descriptor protocol, called on attribute access.
+
+        When accessed on an instance, it returns a callable `wrapper` that,
+        when called, will execute the pure function with live instance data.
+        """
+        if instance is None:
+            return self
+
+        def wrapper(*args, **kwargs) -> _ReturnType | None:
+            """Wraps the pure function call, injecting live state."""
+            # Resolve the pure function at call time
+            if isinstance(self.func_or_name, str):
+                if not hasattr(instance, '_rules'):
+                    raise AttributeError(f"Class '{instance.__class__.__name__}' uses string-based shell methods but has no _rules provider.")
+                rules_provider = getattr(instance, "_rules")
+                actual_func = getattr(rules_provider, self.func_or_name)
+            else:
+                actual_func = self.func_or_name
+
+            live_data_values = []
+            for name in self.live_attr_names:
+                attr = getattr(instance, name, _sentinel)
+                if attr is _sentinel:
+                    raise GetAttrNotFoundError(name, instance)
+                live_data_values.append(attr)
+            mutating_attr_index = 0 if self.mutates else -1
+            result = actual_func(*live_data_values, *args, **kwargs)
+
+            if self.mutates:
+                setattr(instance, self.live_attr_names[mutating_attr_index], result)
+                return None
+
+            return result
+
+        return wrapper
+
+def ruleset_provider(rules_cls: type) -> Callable[[type], type]:
+    """A class decorator that registers a 'rules' class for an entity."""
+    def decorator(entity_cls: type) -> type:
+        """Attaches the ruleset class to the entity class."""
+        entity_cls._rules = rules_cls
+        return entity_cls
+    return decorator
+
+def shell_method(
+    live_attr_names: str | tuple[str, ...], pure_func: Callable[..., Any] | str | None = None, mutates: bool = False
+) -> Callable[[Callable], PureShellMethod[Any]]:
+    """
+    A method decorator that links a method to a pure function.
+
+    This decorator replaces a placeholder method in a StatefulEntity with a
+    PureShellMethod descriptor, configuring the link between the stateful shell and
+    the functional core. It can infer the pure function's name from the method
+    it decorates or use an explicitly provided name/function.
+    """
+    def decorator(func_placeholder: Callable) -> PureShellMethod[Any]:
+        """Creates and returns the configured PureShellMethod descriptor."""
+        # If pure_func is not provided, use the placeholder's name by convention.
+        func_or_name = pure_func or func_placeholder.__name__
+        return PureShellMethod(func_or_name, live_attr_names, mutates)
+    return decorator
+
+def side_effect_method(func: Callable) -> Callable:
+    """A decorator to explicitly mark a method as having side effects."""
+    # Tag the function with a special attribute for the enforcement hook to find.
+    setattr(func, '_is_side_effect', True)
+    return func
+
+class Ruleset:
+    """A base class that ENFORCES that all methods in a ruleset are static."""
+    def __init_subclass__(cls, **kwargs):
+        """Inspects subclasses to ensure all methods are static."""
+        super().__init_subclass__(**kwargs)
+        for name, value in vars(cls).items():
+            if name.startswith('__'):
+                continue
+            # Ensure that any callable attribute is a staticmethod instance
+            if callable(value) and not isinstance(value, staticmethod):
+                raise TypeError(
+                    f"Ruleset class '{cls.__name__}' has a non-static method '{name}'. "
+                    f"All methods in a Ruleset must be decorated with @staticmethod."
+                )
+
+class StatefulEntity:
+    """A base class that ENFORCES the stateful shell pattern."""
+    _rules: type | None = None
+
+    def __init_subclass__(cls, **kwargs):
+        """Inspects subclasses to ensure they don't contain raw business logic."""
+        super().__init_subclass__(**kwargs)
+        for name, value in vars(cls).items():
+            is_allowed_side_effect = hasattr(value, '_is_side_effect')
+
+            if not callable(value) or \
+               (name.startswith('__') and name.endswith('__')) or \
+               is_allowed_side_effect or \
+               isinstance(value, PureShellMethod):
+                continue
+            raise TypeError(
+                f"Class '{cls.__name__}' has a method '{name}' with business logic. "
+                f"Methods in a StatefulEntity must be linked via @shell_method, "
+                f"or marked with @side_effect_method if they perform I/O or rendering."
+            )

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pureshell"
+version = "0.1.0"
+description = "A Python module for impartial computation. Implements the Functional Core, Stateful Shell pattern."
+authors = [
+    { name="Dane Jones", email="danerjones@gmail.com" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    # Core dependencies (none required for core usage)
+]
+
+[project.optional-dependencies]
+examples = ["pygame"]
+test = ["pytest"]
+
+[project.urls]
+"Homepage" = "https://github.com/zinthose/pureshell"
+"Bug Tracker" = "https://github.com/zinthose/pureshell/issues"
+
+[tool.setuptools.packages.find]
+where = ["pureshell"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
