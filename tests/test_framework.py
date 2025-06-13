@@ -1,18 +1,19 @@
 """Unit tests for the core PureShell framework enforcement."""
-# test_framework.py
-# pylint: disable=line-too-long,protected-access,no-self-use,wrong-import-position
-import unittest
-import sys
-import os
 
-# Add the project root directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import unittest
 
 from pureshell import StatefulEntity, Ruleset
+
+# test_framework.py
+# pylint: disable=line-too-long,protected-access,wrong-import-position
+
+# Add the project root directory to the Python path
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # ==============================================================================
 # --- Test Suite for Core Framework ---
 # ==============================================================================
+
 
 class TestPatternEnforcement(unittest.TestCase):
     """Tests the enforcement mechanisms of the base classes."""
@@ -22,8 +23,9 @@ class TestPatternEnforcement(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "has a method 'rogue_method'"):
             # This class definition should fail at import time because it violates
             # the StatefulEntity contract.
-            class RogueEntity(StatefulEntity): # pylint: disable=unused-variable
+            class RogueEntity(StatefulEntity):  # pylint: disable=unused-variable
                 """An invalid entity with logic in a method."""
+
                 def rogue_method(self):
                     """This should not be allowed."""
                     return 1 + 1
@@ -32,11 +34,13 @@ class TestPatternEnforcement(unittest.TestCase):
         """Ensures Ruleset rejects classes with non-static methods."""
         with self.assertRaisesRegex(TypeError, "has a non-static method 'rogue_rule'"):
             # This class definition should fail because its method is not static.
-            class RogueRules(Ruleset): # pylint: disable=unused-variable
+            class RogueRules(Ruleset):  # pylint: disable=unused-variable
                 """An invalid ruleset."""
+
                 def rogue_rule(self):
                     """This should not be allowed."""
                     return True
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

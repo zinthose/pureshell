@@ -2,9 +2,11 @@
 A user-friendly entry point to run the examples for the pureshell package.
 This script handles path setup and provides a simple menu.
 """
-import sys
-import os
+
 import importlib
+import os
+import sys
+
 
 def main():
     """
@@ -28,7 +30,7 @@ def main():
 
         choice = input("Select an example to run: ")
 
-        if choice.lower() == 'q':
+        if choice.lower() == "q":
             break
 
         if choice in examples:
@@ -38,15 +40,19 @@ def main():
 
                 module = importlib.import_module(module_name)
                 # Assuming each example script has a main() function
-                if hasattr(module, 'main'):
+                if hasattr(module, "main"):
                     module.main()
                 else:
-                    print(f"Error: Example '{module_name}' does not have a main() function.")
+                    print(
+                        f"Error: Example '{module_name}' does "
+                        "not have a main() function."
+                    )
             except ImportError as e:
                 print(f"Error importing example: {e}")
             print(f"\n--- Finished: {example_name} ---")
         else:
             print("Invalid selection. Please try again.")
+
 
 if __name__ == "__main__":
     main()

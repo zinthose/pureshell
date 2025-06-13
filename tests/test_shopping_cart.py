@@ -1,15 +1,18 @@
 """Unit tests for the ShoppingCart example implementation."""
+
+import unittest
+
+# import sys
+# import os
+
 # test_shopping_cart.py
 # pylint: disable=line-too-long,protected-access,wrong-import-position
-import unittest
-import sys
-import os
 
 # Add the project root directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from examples.shopping_cart_example import (
-    CartItem, UserProfile,
+    CartItem,
+    UserProfile,
     CartRules,
     ShoppingCart,
 )
@@ -17,6 +20,7 @@ from examples.shopping_cart_example import (
 # ==============================================================================
 # --- Test Suite for Shopping Cart ---
 # ==============================================================================
+
 
 class TestCartRules(unittest.TestCase):
     """Tests the pure functions in the CartRules class."""
@@ -49,6 +53,7 @@ class TestCartRules(unittest.TestCase):
         self.assertTrue(CartRules.is_valid([normal_item], minor))
         self.assertTrue(CartRules.is_valid([], adult))
 
+
 class TestShoppingCartIntegration(unittest.TestCase):
     """Tests the stateful ShoppingCart class."""
 
@@ -77,5 +82,6 @@ class TestShoppingCartIntegration(unittest.TestCase):
         self.assertTrue(adult_cart.is_valid_for_checkout())
         self.assertFalse(minor_cart.is_valid_for_checkout())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

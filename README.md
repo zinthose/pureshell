@@ -140,7 +140,7 @@ In addition, this addresses linter warnings that would be raised if `pass` or el
 This repository includes complete, runnable examples to demonstrate the pattern. A helper script is provided to easily run them.
 
 ```bash
-python run_examples.py
+python -m example.run
 ```
 
 This will present a menu where you can choose between:

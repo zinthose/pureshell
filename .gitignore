@@ -55,3 +55,12 @@ coverage.xml
 
 # Pyre type checker
 .pyre/
+
+# VS Code
+.vscode/
+
+# Sphinx documentation build
+/docs/_build/
+
+# Pre-commit cache
+.pre-commit-cache/

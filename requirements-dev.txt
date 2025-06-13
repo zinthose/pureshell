@@ -1,0 +1,13 @@
+# Development and test dependencies
+pytest
+pre-commit
+black
+flake8
+isort
+mypy
+pytest-cov
+sphinx
+pip-tools
+
+# Required for the game_example
+pygame
