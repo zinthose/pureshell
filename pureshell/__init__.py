@@ -2,7 +2,7 @@
 
 # __init__.py
 # pylint: disable=line-too-long,protected-access
-from typing import Callable, Any, Generic, TypeVar, overload, Union
+from typing import Any, Callable, Generic, TypeVar, Union, overload
 
 # ==============================================================================
 # --- 1. Generic Type Variables & Metaprogramming Tools ---
@@ -19,7 +19,7 @@ class GetAttrNotFoundError(AttributeError):
     def __init__(self, attr_name: str, instance: Any):
         super().__init__(
             f"Attribute '{attr_name}' listed in @shell_method not"
-            " found on instance of '{instance.__class__.__name__}'."
+            f" found on instance of '{instance.__class__.__name__}'."
         )
 
 
