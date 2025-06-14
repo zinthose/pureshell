@@ -142,7 +142,7 @@ def ruleset_provider(rules_cls: type) -> Callable[[type], type]:
 
     def decorator(entity_cls: type) -> type:
         """Attaches the ruleset class to the entity class."""
-        entity_cls._rules = rules_cls
+        setattr(entity_cls, "_rules", rules_cls)  # Use setattr for dynamic assignment
         return entity_cls
 
     return decorator
@@ -181,7 +181,7 @@ def side_effect_method(func: Callable[..., Any]) -> Callable[..., Any]:
 class Ruleset:
     """A base class that ENFORCES that all methods in a ruleset are static."""
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:  # Added type hints
         """Inspects subclasses to ensure all methods are static."""
         super().__init_subclass__(**kwargs)
         for name, value in vars(cls).items():
@@ -224,7 +224,7 @@ class StatefulEntity:
         elif not hasattr(self, "_instance_rules"):  # Ensure _instance_rules exists
             self._instance_rules = None
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs: Any) -> None:  # Added type hints
         """Enforces that no methods in subclasses are actual implementations."""
         super().__init_subclass__(**kwargs)
         for name, value in vars(cls).items():
