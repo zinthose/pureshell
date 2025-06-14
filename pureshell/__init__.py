@@ -198,25 +198,59 @@ class Ruleset:
 class StatefulEntity:
     """A base class that ENFORCES the stateful shell pattern."""
 
-    _rules: type | None = None  # Class-level rules, set by @ruleset_provider
-    # Instance-level rules, optionally set in __init__ by subclass
-    _instance_rules: Any | None = None
+    _rules: type | None = None  # Class-level rules provider
+    _instance_rules: Ruleset | None = None  # Instance-level rules provider
+
+    def __init__(
+        self,
+        initial_state: dict[str, Any] | None = None,
+        ruleset_instance: Ruleset | None = None,
+    ):
+        """
+        Initializes the StatefulEntity.
+
+        Args:
+            initial_state: An optional dictionary to initialize instance attributes.
+                           Keys should correspond to attribute names.
+            ruleset_instance: An optional Ruleset instance to override class-level
+                              rules.
+        """
+        if initial_state:
+            for key, value in initial_state.items():
+                setattr(self, key, value)
+
+        if ruleset_instance:
+            self._instance_rules = ruleset_instance
+        elif not hasattr(self, "_instance_rules"):  # Ensure _instance_rules exists
+            self._instance_rules = None
 
     def __init_subclass__(cls, **kwargs):
-        """Inspects subclasses to ensure they don't contain raw business logic."""
+        """Enforces that no methods in subclasses are actual implementations."""
         super().__init_subclass__(**kwargs)
         for name, value in vars(cls).items():
-            is_allowed_side_effect = hasattr(value, "_is_side_effect")
+            if name.startswith("__") or name in ("_rules", "_instance_rules"):
+                continue  # Skip dunder methods, _rules, and _instance_rules
 
-            if (
-                not callable(value)
-                or (name.startswith("__") and name.endswith("__"))
-                or is_allowed_side_effect
-                or isinstance(value, PureShellMethod)
-            ):
+            # Check if it's a PureShellMethod (already processed)
+            if isinstance(value, PureShellMethod):
                 continue
-            raise TypeError(
-                f"Class '{cls.__name__}' has a method '{name}' with business logic. "
-                f"Methods in a StatefulEntity must be linked via @shell_method, "
-                f"or marked with @side_effect_method if they perform I/O or rendering."
-            )
+
+            # Check if it's tagged as a side_effect_method
+            if hasattr(value, "_is_side_effect") and getattr(value, "_is_side_effect"):
+                continue
+
+            # Check if it's a property
+            if isinstance(value, property):
+                # You might want to inspect fget, fset, fdel of the property
+                # For now, we'll assume properties are fine or handled elsewhere
+                continue
+
+            if callable(value):
+                raise TypeError(
+                    f"Class '{cls.__name__}' has an implemented method '{name}'. "
+                    f"Methods in StatefulEntity subclasses must be decorated with "
+                    f"@shell_method or @side_effect_method, or be properties."
+                )
+
+
+__version__ = "0.2.0"
