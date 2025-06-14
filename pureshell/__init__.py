@@ -2,7 +2,7 @@
 
 # __init__.py
 # pylint: disable=line-too-long,protected-access
-from typing import Any, Callable, Generic, TypeVar, Union, overload
+from typing import Any, Callable, Generic, TypeVar, Union, cast, overload
 
 # ==============================================================================
 # --- 1. Generic Type Variables & Metaprogramming Tools ---
@@ -76,7 +76,7 @@ class PureShellMethod(Generic[_ReturnType]):
         if instance is None:
             return self
 
-        def wrapper(*args, **kwargs) -> _ReturnType | None:
+        def wrapper(*args: Any, **kwargs: Any) -> _ReturnType | None:
             """Wraps the pure function call, injecting live state."""
             # Resolve the pure function at call time
             if isinstance(self.func_or_name, str):
@@ -103,7 +103,7 @@ class PureShellMethod(Generic[_ReturnType]):
                 setattr(instance, self.live_attr_names[mutating_attr_index], result)
                 return None
 
-            return result
+            return cast(_ReturnType | None, result)
 
         return wrapper
 
@@ -123,7 +123,7 @@ def shell_method(
     live_attr_names: str | tuple[str, ...],
     pure_func: Callable[..., Any] | str | None = None,
     mutates: bool = False,
-) -> Callable[[Callable], PureShellMethod[Any]]:
+) -> Callable[[Callable[..., Any]], PureShellMethod[Any]]:
     """
     A method decorator that links a method to a pure function.
 
@@ -133,7 +133,7 @@ def shell_method(
     it decorates or use an explicitly provided name/function.
     """
 
-    def decorator(func_placeholder: Callable) -> PureShellMethod[Any]:
+    def decorator(func_placeholder: Callable[..., Any]) -> PureShellMethod[Any]:
         """Creates and returns the configured PureShellMethod descriptor."""
         # If pure_func is not provided, use the placeholder's name by convention.
         func_or_name = pure_func or func_placeholder.__name__
@@ -142,7 +142,7 @@ def shell_method(
     return decorator
 
 
-def side_effect_method(func: Callable) -> Callable:
+def side_effect_method(func: Callable[..., Any]) -> Callable[..., Any]:
     """A decorator to explicitly mark a method as having side effects."""
     # Tag the function with a special attribute for the enforcement hook to find.
     setattr(func, "_is_side_effect", True)
