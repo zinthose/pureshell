@@ -23,6 +23,52 @@ The framework is built around a few key components:
 * `@shell_method(...)`: A method decorator that declaratively links a method on a `StatefulEntity` to a pure function in its `Ruleset`.
 * `@side_effect_method`: A decorator to explicitly mark methods that perform I/O (like printing to the console or rendering graphics) as being exempt from the "pure logic" enforcement.
 
+### New in version 0.2.0: Dynamic Ruleset Injection
+
+You can now inject a `Ruleset` instance directly when creating a `StatefulEntity`. This allows for more flexible and dynamic behavior, especially useful for scenarios like:
+
+* **Strategy Pattern:** Easily switch between different sets of rules at runtime.
+* **Testing:** Inject mock or simplified rulesets for testing specific behaviors.
+* **Configuration-driven Behavior:** Load different rulesets based on configuration files or user settings.
+
+If a `ruleset_instance` is provided during `StatefulEntity` instantiation, it will be used instead of the one specified by the `@ruleset_provider` decorator.
+
+```python
+# Example of dynamic ruleset injection
+from pureshell import StatefulEntity, Ruleset, shell_method
+
+class BehaviorA(Ruleset):
+    @staticmethod
+    def act(state_data: dict) -> dict:
+        print("Performing Action A")
+        return {**state_data, "action_taken": "A"}
+
+class BehaviorB(Ruleset):
+    @staticmethod
+    def act(state_data: dict) -> dict:
+        print("Performing Action B")
+        return {**state_data, "action_taken": "B"}
+
+class MyEntity(StatefulEntity):
+    def __init__(self, initial_state: dict, ruleset_instance: Ruleset = None):
+        super().__init__(initial_state, ruleset_instance)
+
+    @shell_method(mutates=True)
+    def perform_action(self) -> None:
+        pass # Logic delegated to ruleset's 'act' method
+
+# Create entity with default behavior (if a @ruleset_provider is set)
+# entity_default = MyEntity(initial_state={})
+
+# Create entity with BehaviorA
+entity_a = MyEntity(initial_state={}, ruleset_instance=BehaviorA())
+entity_a.perform_action() # Will use BehaviorA.act
+
+# Create entity with BehaviorB
+entity_b = MyEntity(initial_state={}, ruleset_instance=BehaviorB())
+entity_b.perform_action() # Will use BehaviorB.act
+```
+
 ## 🚀 Installation
 
 To use `pureshell` in your project, it's highly recommended to work within a virtual environment.
@@ -172,7 +218,7 @@ In addition, this addresses linter warnings that would be raised if `pass` or el
 
 This repository includes complete, runnable examples to demonstrate the pattern. A helper script is provided to easily run them.
 
-First, ensure you have installed the project in editable mode and the development dependencies (see [Installation](#installation)).
+First, ensure you have installed the project in editable mode and the development dependencies (see [🚀 Installation](#-installation)).
 
 Then, run the examples module:
 

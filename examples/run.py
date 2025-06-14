@@ -15,11 +15,12 @@ def main():
     # Add the project root to the Python path to allow importing the 'pureshell'
     # package and the 'examples' modules correctly.
     project_root = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, project_root)
+    sys.path.insert(0, os.path.dirname(project_root))  # Corrected line
 
     examples = {
         "1": ("examples.shopping_cart_example", "Shopping Cart"),
         "2": ("examples.game_example", "Pygame Space Shooter"),
+        "3": ("examples.dynamic_behavior_example", "Dynamic Behavior Bot"),
     }
 
     while True:

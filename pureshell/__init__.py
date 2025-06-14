@@ -78,16 +78,45 @@ class PureShellMethod(Generic[_ReturnType]):
 
         def wrapper(*args: Any, **kwargs: Any) -> _ReturnType | None:
             """Wraps the pure function call, injecting live state."""
+            actual_func: Callable[..., Any]
             # Resolve the pure function at call time
             if isinstance(self.func_or_name, str):
-                if not hasattr(instance, "_rules"):
-                    raise AttributeError(
-                        f"Class '{instance.__class__.__name__}' uses string-based"
-                        " shell methods but has no _rules provider."
+                rules_source: Any | None = None
+                # 1. Check for instance-specific rules
+                if (
+                    hasattr(instance, "_instance_rules")
+                    and getattr(instance, "_instance_rules") is not None
+                ):
+                    rules_source = getattr(instance, "_instance_rules")
+                # 2. Fallback to class-level rules
+                elif (
+                    hasattr(instance.__class__, "_rules")
+                    and getattr(instance.__class__, "_rules") is not None
+                ):
+                    rules_source = getattr(instance.__class__, "_rules")
+
+                if rules_source is None:
+                    err_msg = (
+                        f"Instance of '{instance.__class__.__name__}' uses "
+                        f"string-based shell method '{self.func_or_name}' but has no "
+                        f"rules provider. Assign to 'self._instance_rules' in "
+                        f"__init__ or use @ruleset_provider."
                     )
-                rules_provider = getattr(instance, "_rules")
-                actual_func = getattr(rules_provider, self.func_or_name)
-            else:
+                    raise AttributeError(err_msg)
+                try:
+                    actual_func = getattr(rules_source, self.func_or_name)
+                except AttributeError as e:
+                    rules_name = (
+                        rules_source.__class__.__name__
+                        if not isinstance(rules_source, type)
+                        else rules_source.__name__
+                    )
+                    err_msg = (
+                        f"Pure function '{self.func_or_name}' not found on rules "
+                        f" provider '{rules_source}'. Ensure defined in '{rules_name}'."
+                    )
+                    raise AttributeError(err_msg) from e
+            else:  # func_or_name is a direct callable
                 actual_func = self.func_or_name
 
             live_data_values = []
@@ -169,7 +198,9 @@ class Ruleset:
 class StatefulEntity:
     """A base class that ENFORCES the stateful shell pattern."""
 
-    _rules: type | None = None
+    _rules: type | None = None  # Class-level rules, set by @ruleset_provider
+    # Instance-level rules, optionally set in __init__ by subclass
+    _instance_rules: Any | None = None
 
     def __init_subclass__(cls, **kwargs):
         """Inspects subclasses to ensure they don't contain raw business logic."""
