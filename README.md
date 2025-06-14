@@ -23,11 +23,91 @@ The framework is built around a few key components:
 * `@shell_method(...)`: A method decorator that declaratively links a method on a `StatefulEntity` to a pure function in its `Ruleset`.
 * `@side_effect_method`: A decorator to explicitly mark methods that perform I/O (like printing to the console or rendering graphics) as being exempt from the "pure logic" enforcement.
 
+### New in version 0.2.0: Dynamic Ruleset Injection
+
+You can now inject a `Ruleset` instance directly when creating a `StatefulEntity`. This allows for more flexible and dynamic behavior, especially useful for scenarios like:
+
+* **Strategy Pattern:** Easily switch between different sets of rules at runtime.
+* **Testing:** Inject mock or simplified rulesets for testing specific behaviors.
+* **Configuration-driven Behavior:** Load different rulesets based on configuration files or user settings.
+
+If a `ruleset_instance` is provided during `StatefulEntity` instantiation, it will be used instead of the one specified by the `@ruleset_provider` decorator.
+
+```python
+# Example of dynamic ruleset injection
+from pureshell import StatefulEntity, Ruleset, shell_method
+
+class BehaviorA(Ruleset):
+    @staticmethod
+    def act(state_data: dict) -> dict:
+        print("Performing Action A")
+        return {**state_data, "action_taken": "A"}
+
+class BehaviorB(Ruleset):
+    @staticmethod
+    def act(state_data: dict) -> dict:
+        print("Performing Action B")
+        return {**state_data, "action_taken": "B"}
+
+class MyEntity(StatefulEntity):
+    def __init__(self, initial_state: dict, ruleset_instance: Ruleset = None):
+        # StatefulEntity.__init__ now handles initial_state and ruleset_instance
+        super().__init__(initial_state, ruleset_instance)
+
+    @shell_method("state_data", pure_func="act", mutates=True)
+    def perform_action(self) -> None:
+        pass # Logic delegated to ruleset's 'act' method
+
+# Create entity with default behavior (if a @ruleset_provider is set)
+# entity_default = MyEntity(initial_state={})
+
+# Create entity with BehaviorA
+entity_a = MyEntity(initial_state={"state_data": {}}, ruleset_instance=BehaviorA())
+entity_a.perform_action() # Will use BehaviorA.act
+
+# Create entity with BehaviorB
+entity_b = MyEntity(initial_state={"state_data": {}}, ruleset_instance=BehaviorB())
+entity_b.perform_action() # Will use BehaviorB.act
+```
+
 ## 🚀 Installation
 
-```bash
-pip install pureshell
-```
+To use `pureshell` in your project, it's highly recommended to work within a virtual environment.
+
+1. **Create and activate a virtual environment:**
+
+   ```bash
+   # Windows
+   python -m venv .venv
+   .venv\\Scripts\\activate
+
+   # macOS/Linux
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. **Install from PyPI (for users of the library):**
+
+   ```bash
+   pip install pureshell
+   ```
+
+   Alternatively, if you have a `requirements.txt` file that includes `pureshell`:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **For development (if you've cloned this repository):**
+
+   Install the project and its development dependencies:
+
+   ```bash
+   pip install -e .
+   pip install -r requirements-dev.txt
+   ```
+
+   This will install the project in editable mode and all tools needed for testing, linting, formatting, etc.
 
 ## 🚀 Usage
 
@@ -139,23 +219,83 @@ In addition, this addresses linter warnings that would be raised if `pass` or el
 
 This repository includes complete, runnable examples to demonstrate the pattern. A helper script is provided to easily run them.
 
+First, ensure you have installed the project in editable mode and the development dependencies (see [🚀 Installation](#-installation)).
+
+Then, run the examples module:
+
 ```bash
-python run_examples.py
+python -m examples.run
 ```
 
 This will present a menu where you can choose between:
 
 * **Shopping Cart**: The simple e-commerce example detailed above.
-
 * **Pygame Space Shooter**: A more advanced example showing how `pureshell` can be used to completely separate game logic from the Pygame rendering engine, making the logic highly testable.
 
-## ✅ Running Tests
+## ✅ Running Tests & Quality Checks
 
-The project includes a comprehensive test suite. To run the tests, navigate to the project root directory and run the test discovery command:
+This project uses `pytest` for testing, `flake8` for linting, `black` for formatting, `mypy` for type checking, and `pre-commit` to automate these checks.
 
-```bash
-python -m unittest discover tests
-```
+1. **Ensure development dependencies are installed:**
+
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+2. **Run all tests with coverage:**
+
+   ```bash
+   pytest
+   ```
+
+   Coverage reports are generated in HTML format in the `htmlcov/` directory and also printed to the console.
+
+3. **Run linters and formatters manually:**
+
+   ```bash
+   flake8 .
+   black .
+   isort .
+   mypy .
+   ```
+
+4. **Use pre-commit hooks (recommended):**
+
+   Pre-commit hooks will automatically run checks before each commit.
+
+   ```bash
+   pre-commit install
+   ```
+
+   Now, `flake8`, `black`, `isort`, and `mypy` will run on staged files automatically when you commit. If they find issues, the commit will be aborted, allowing you to fix them.
+
+## 📚 Building Documentation
+
+Documentation is built using Sphinx.
+
+1. **Ensure development dependencies are installed:**
+
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+2. **Build the HTML documentation:**
+
+   ```bash
+   sphinx-build -b html docs docs/_build/html
+   ```
+
+   The generated HTML will be in `docs/_build/html/index.html`.
+
+## CI Pipeline
+
+This project uses GitHub Actions for Continuous Integration. The workflow is defined in `.github/workflows/ci.yml` and includes:
+
+* Linting with Flake8
+* Formatting checks with Black and isort
+* Type checking with MyPy
+* Running tests with Pytest and generating coverage reports
+* Uploading coverage reports to Codecov (if `CODECOV_TOKEN` is set in repository secrets)
 
 ## 🗺️ Roadmap / Future Iterations
 
