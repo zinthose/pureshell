@@ -8,6 +8,7 @@ mypy
 pytest-cov
 sphinx
 pip-tools
+markdown-it-py # Used to parse the readme to test the code examples
 
 # Required for the game_example
 pygame

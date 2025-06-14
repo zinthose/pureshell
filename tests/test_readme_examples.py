@@ -1,68 +1,54 @@
-import re
 import subprocess
+import os
 
 import pytest
+from markdown_it import MarkdownIt
 
 
-# Helper function to extract python code blocks from markdown
-def extract_python_code_blocks(markdown_content):
-    code_blocks = re.findall(r"```python\n(.*?)\n```", markdown_content, re.DOTALL)
-    return code_blocks
+# Helper function to group python code blocks by markdown heading using markdown-it-py
+def get_readme_code_groups_markdown_it(markdown_content: str):
+    md = MarkdownIt()
+    tokens = md.parse(markdown_content)
 
-
-# Helper function to group python code blocks by markdown heading
-def group_code_blocks_by_heading(markdown_content: str):
     groups = []
     current_heading_text = "Top Level (before first heading)"
-    # Stores individual code blocks for the current heading
     current_blocks_for_heading = []
-
-    lines = markdown_content.splitlines()
-    in_python_code_block = False
-    current_block_lines = []
 
     def finalize_current_heading_group():
         nonlocal current_blocks_for_heading, current_heading_text
         if current_blocks_for_heading:
-            merged_code = "\\n\\n".join(current_blocks_for_heading)
-            groups.append({"heading": current_heading_text, "code": merged_code})
+            merged_code = "\n\n".join(current_blocks_for_heading).strip()
+            if merged_code:  # Only add if there's actual code
+                groups.append({"heading": current_heading_text, "code": merged_code})
         current_blocks_for_heading = []
 
-    for line in lines:
-        if line.startswith("#"):  # New heading
-            if in_python_code_block:
-                # Current block is terminated by a new heading
-                current_blocks_for_heading.append("\\n".join(current_block_lines))
-                current_block_lines = []
-                in_python_code_block = False
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
 
-            finalize_current_heading_group()  # Finalize blocks for the PREVIOUS heading
-            current_heading_text = line.strip()
-            continue
+        if token.type == "heading_open":
+            # Finalize blocks for the PREVIOUS heading
+            finalize_current_heading_group()
 
-        if line.strip() == "```python":
-            # A ```python inside another, treat as end of prior
-            if in_python_code_block:
-                current_blocks_for_heading.append("\\n".join(current_block_lines))
-                # current_block_lines are reset below
+            # Extract heading text
+            i += 1
+            current_heading_text = "Unnamed Heading"  # Default
+            if i < len(tokens) and tokens[i].type == "inline":
+                inline_token_children = tokens[i].children
+                if inline_token_children:  # Explicitly check for None
+                    current_heading_text = "".join(
+                        t.content for t in inline_token_children if t.type == "text"
+                    ).strip()
 
-            in_python_code_block = True
-            current_block_lines = []  # Reset for the new block
-            continue
+            # Skip to heading_close
+            while i < len(tokens) and tokens[i].type != "heading_close":
+                i += 1
 
-        if line.strip() == "```" and in_python_code_block:
-            # Normal end of a python code block
-            current_blocks_for_heading.append("\\n".join(current_block_lines))
-            current_block_lines = []
-            in_python_code_block = False
-            continue
+        elif token.type == "fence" and token.info.strip().lower() == "python":
+            if token.content:
+                current_blocks_for_heading.append(token.content.strip())
 
-        if in_python_code_block:
-            current_block_lines.append(line)
-
-    # After loop, handle any unterminated block
-    if in_python_code_block:
-        current_blocks_for_heading.append("\\n".join(current_block_lines))
+        i += 1
 
     # Finalize the very last group of blocks
     finalize_current_heading_group()
@@ -72,35 +58,69 @@ def group_code_blocks_by_heading(markdown_content: str):
 
 # Test to run readme examples
 def test_readme_examples(capsys):
-    with open("README.md", "r", encoding="utf-8") as f:
-        readme_content = f.read()
+    try:
+        with open("README.md", "r", encoding="utf-8") as f:
+            readme_content = f.read()
+    except FileNotFoundError:
+        pytest.skip("README.md not found.")
 
-    code_groups = group_code_blocks_by_heading(readme_content)
+    code_groups = get_readme_code_groups_markdown_it(readme_content)
 
     if not code_groups:
-        pytest.skip("No code groups found in README.md")
+        pytest.skip(
+            "No Python code groups found in README.md by markdown-it-py parser."
+        )
 
+    all_tests_passed = True
     for i, group in enumerate(code_groups):
-        if not group["code"].strip():  # Skip if no actual code in this group
+        if not group["code"].strip():
             print(f"Skipping empty code group under heading: {group['heading']}")
             continue
 
         print(f"Testing code group under heading: {group['heading']}")
 
         try:
-            subprocess.run(
+            current_env = os.environ.copy()
+            project_root = os.getcwd()
+
+            # Prepend project root to PYTHONPATH for the subprocess
+            existing_pythonpath = current_env.get("PYTHONPATH", "")
+            if existing_pythonpath:
+                current_env["PYTHONPATH"] = (
+                    project_root + os.pathsep + existing_pythonpath
+                )
+            else:
+                current_env["PYTHONPATH"] = project_root
+
+            process = subprocess.run(
                 ["python", "-c", group["code"]],
                 capture_output=True,
                 text=True,
-                check=True,
-                cwd=".",  # Run from project root
+                check=False,  # We'll check manually to provide better error messages
+                cwd=".",
+                env=current_env,  # Use the modified environment
             )
-        except subprocess.CalledProcessError as e:
-            pytest.fail(
-                f"README.md code under heading '{group['heading']}' "
-                f"(group {i}) failed:\n"
-                f"Code:\n{group['code']}\n"
-                f"Error:\n{e.stderr}"
-            )
+            if process.returncode != 0:
+                all_tests_passed = False
+                pytest.fail(
+                    f"README.md code under heading '{group['heading']}' "
+                    f"(group {i}) failed:\n"
+                    f"Return Code: {process.returncode}\n"
+                    f"Code:\n{group['code']}\n"
+                    f"Stdout:\n{process.stdout}\n"
+                    f"Stderr:\n{process.stderr}"
+                )
+
         except FileNotFoundError:
+            all_tests_passed = False
             pytest.fail("Python interpreter not found. Ensure python is in your PATH.")
+        except Exception as e:
+            all_tests_passed = False
+            pytest.fail(
+                f"An unexpected error occurred while testing code group "
+                f"'{group['heading']}' (group {i}):\n"
+                f"Error: {e}\n"
+                f"Code:\n{group['code']}"
+            )
+
+    assert all_tests_passed, "One or more README example code blocks failed."

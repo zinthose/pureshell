@@ -51,9 +51,10 @@ class BehaviorB(Ruleset):
 
 class MyEntity(StatefulEntity):
     def __init__(self, initial_state: dict, ruleset_instance: Ruleset = None):
+        # StatefulEntity.__init__ now handles initial_state and ruleset_instance
         super().__init__(initial_state, ruleset_instance)
 
-    @shell_method(mutates=True)
+    @shell_method("state_data", pure_func="act", mutates=True)
     def perform_action(self) -> None:
         pass # Logic delegated to ruleset's 'act' method
 
@@ -61,11 +62,11 @@ class MyEntity(StatefulEntity):
 # entity_default = MyEntity(initial_state={})
 
 # Create entity with BehaviorA
-entity_a = MyEntity(initial_state={}, ruleset_instance=BehaviorA())
+entity_a = MyEntity(initial_state={"state_data": {}}, ruleset_instance=BehaviorA())
 entity_a.perform_action() # Will use BehaviorA.act
 
 # Create entity with BehaviorB
-entity_b = MyEntity(initial_state={}, ruleset_instance=BehaviorB())
+entity_b = MyEntity(initial_state={"state_data": {}}, ruleset_instance=BehaviorB())
 entity_b.perform_action() # Will use BehaviorB.act
 ```
 
