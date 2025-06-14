@@ -20,7 +20,9 @@ class TestPatternEnforcement(unittest.TestCase):
 
     def test_stateful_entity_enforcement(self):
         """Ensures StatefulEntity rejects classes with raw business logic."""
-        with self.assertRaisesRegex(TypeError, "has a method 'rogue_method'"):
+        # Updated regex to match the more specific error message from StatefulEntity
+        expected_error_regex = r"Class '.*' has an implemented method '.*'"
+        with self.assertRaisesRegex(TypeError, expected_error_regex):
             # This class definition should fail at import time because it violates
             # the StatefulEntity contract.
             class RogueEntity(StatefulEntity):  # pylint: disable=unused-variable
