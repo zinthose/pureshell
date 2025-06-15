@@ -109,10 +109,13 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
 
         # Test error when no ruleset is available at all
         entity_no_rules_at_all = EntityNoDefaultRules(5)
-        with self.assertRaisesRegex(
-            AttributeError,
-            "uses string-based shell method 'get_value' but has no rules provider",
-        ):
+        # Updated regex to match the new error message format
+        expected_error_regex = (
+            r"PureShell: Rules provider not found for 'EntityNoDefaultRules' "
+            r"when resolving shell method 'get_value'. "
+            r"Use @ruleset_provider or set 'self._instance_rules'."
+        )
+        with self.assertRaisesRegex(AttributeError, expected_error_regex):
             entity_no_rules_at_all.get_value()
 
 

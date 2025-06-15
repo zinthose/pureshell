@@ -6,6 +6,7 @@
 __version__ = "0.2.2"  # Synced for bump2version
 
 from typing import Any, Callable, Generic, TypeVar, Union, cast, overload
+import asyncio
 
 # ==============================================================================
 # --- 1. Generic Type Variables & Metaprogramming Tools ---
@@ -79,63 +80,107 @@ class PureShellMethod(Generic[_ReturnType]):
         if instance is None:
             return self
 
+        # Resolve the pure function once, as it's the same for all calls
+        # on this instance/method combination. This is done outside the
+        # wrapper to avoid re-computation on every call.
+        actual_func_resolved: Callable[..., Any]
+        if isinstance(self.func_or_name, str):
+            rules_source: Any | None = None
+            # 1. Check for instance-specific rules
+            if (
+                hasattr(instance, "_instance_rules")
+                and getattr(instance, "_instance_rules") is not None
+            ):
+                rules_source = getattr(instance, "_instance_rules")
+            # 2. Fallback to class-level rules
+            elif (
+                hasattr(instance.__class__, "_rules")
+                and getattr(instance.__class__, "_rules") is not None
+            ):
+                rules_source = getattr(instance.__class__, "_rules")
+
+            if rules_source is None:
+                # More specific error for missing rules provider
+                err_msg = (
+                    f"PureShell: Rules provider not found for "
+                    f"'{instance.__class__.__name__}' "
+                    f"when resolving shell method '{self.func_or_name}'. "
+                    f"Use @ruleset_provider or set 'self._instance_rules'."
+                )
+                raise AttributeError(err_msg)  # Consider a custom error type here too
+            try:
+                actual_func_resolved = getattr(rules_source, self.func_or_name)
+            except AttributeError as e:
+                rules_name = (
+                    rules_source.__class__.__name__
+                    if not isinstance(rules_source, type)
+                    else rules_source.__name__
+                )
+                # More specific error for missing pure function
+                err_msg = (
+                    f"PureShell: Pure function '{self.func_or_name}' not found on "
+                    f"rules provider '{rules_name}' "
+                    f"(type: {type(rules_source).__name__}) "
+                    f"for shell method in '{instance.__class__.__name__}'. "
+                )
+                raise AttributeError(err_msg) from e
+        else:  # func_or_name is a direct callable
+            actual_func_resolved = self.func_or_name
+
         def wrapper(*args: Any, **kwargs: Any) -> _ReturnType | None:
             """Wraps the pure function call, injecting live state."""
-            actual_func: Callable[..., Any]
-            # Resolve the pure function at call time
-            if isinstance(self.func_or_name, str):
-                rules_source: Any | None = None
-                # 1. Check for instance-specific rules
-                if (
-                    hasattr(instance, "_instance_rules")
-                    and getattr(instance, "_instance_rules") is not None
-                ):
-                    rules_source = getattr(instance, "_instance_rules")
-                # 2. Fallback to class-level rules
-                elif (
-                    hasattr(instance.__class__, "_rules")
-                    and getattr(instance.__class__, "_rules") is not None
-                ):
-                    rules_source = getattr(instance.__class__, "_rules")
-
-                if rules_source is None:
-                    err_msg = (
-                        f"Instance of '{instance.__class__.__name__}' uses "
-                        f"string-based shell method '{self.func_or_name}' but has no "
-                        f"rules provider. Assign to 'self._instance_rules' in "
-                        f"__init__ or use @ruleset_provider."
-                    )
-                    raise AttributeError(err_msg)
-                try:
-                    actual_func = getattr(rules_source, self.func_or_name)
-                except AttributeError as e:
-                    rules_name = (
-                        rules_source.__class__.__name__
-                        if not isinstance(rules_source, type)
-                        else rules_source.__name__
-                    )
-                    err_msg = (
-                        f"Pure function '{self.func_or_name}' not found on rules "
-                        f" provider '{rules_source}'. Ensure defined in '{rules_name}'."
-                    )
-                    raise AttributeError(err_msg) from e
-            else:  # func_or_name is a direct callable
-                actual_func = self.func_or_name
+            # The actual_func_resolved is now resolved outside this wrapper
+            # This was done to ensure that the resolution happens once per descriptor
+            # access on instance rather than on every call to the wrapped method.
 
             live_data_values = []
             for name in self.live_attr_names:
                 attr = getattr(instance, name, _sentinel)
                 if attr is _sentinel:
+                    # This can stay as GetAttrNotFoundError or be a new specific error
                     raise GetAttrNotFoundError(name, instance)
                 live_data_values.append(attr)
             mutating_attr_index = 0 if self.mutates else -1
-            result = actual_func(*live_data_values, *args, **kwargs)
 
-            if self.mutates:
-                setattr(instance, self.live_attr_names[mutating_attr_index], result)
-                return None
+            # Check if actual_func_resolved is async
+            is_async_func = asyncio.iscoroutinefunction(actual_func_resolved)
 
-            return cast(_ReturnType | None, result)
+            if is_async_func:
+
+                async def async_runner():  # type: ignore
+                    # Pass through args and kwargs to the async pure function
+                    val = await actual_func_resolved(*live_data_values, *args, **kwargs)
+                    if self.mutates:
+                        setattr(
+                            instance, self.live_attr_names[mutating_attr_index], val
+                        )
+                        return None
+                    return cast(_ReturnType | None, val)
+
+                return async_runner()  # type: ignore
+            else:
+                # Synchronous execution path
+                result = actual_func_resolved(*live_data_values, *args, **kwargs)
+                if self.mutates:
+                    setattr(instance, self.live_attr_names[mutating_attr_index], result)
+                    return None
+                return cast(_ReturnType | None, result)
+
+        # If the original pure function was async, the wrapper should also indicate it
+        # returns an Awaitable. This is tricky because the __get__ itself is sync, but
+        # the wrapper it returns might be async. For type hinting purposes, the
+        # @overload on __get__ handles this. However, we need to ensure the `wrapper`
+        # itself is correctly typed if it's async.
+
+        if asyncio.iscoroutinefunction(actual_func_resolved):
+
+            async def async_wrapper(
+                *args: Any, **kwargs: Any
+            ) -> Union[_ReturnType, None]:  # type: ignore
+                # This is the part that will be awaited by the caller
+                return await wrapper(*args, **kwargs)  # type: ignore
+
+            return async_wrapper  # type: ignore
 
         return wrapper
 
