@@ -2,6 +2,9 @@
 
 # __init__.py
 # pylint: disable=line-too-long,protected-access
+
+__version__ = "0.2.2"  # Added for bump2version
+
 from typing import Any, Callable, Generic, TypeVar, Union, cast, overload
 
 # ==============================================================================
@@ -251,6 +254,3 @@ class StatefulEntity:
                     f"Methods in StatefulEntity subclasses must be decorated with "
                     f"@shell_method or @side_effect_method, or be properties."
                 )
-
-
-__version__ = "0.2.0"
