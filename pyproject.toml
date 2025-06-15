@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pureshell"
 version = "0.2.0"
-description = "pureshell is a Python library providing a framework for the \"Functional Core, Stateful Shell\" architectural pattern. It guides you to write business logic as pure, static functions within Ruleset classes, while StatefulEntity objects manage state and delegate operations. This promotes highly testable, maintainable, and understandable code. Key features include @shell_method for declarative logic linking, @ruleset_provider for default behavior, and dynamic injection of Ruleset instances for runtime flexibility (e.g., strategy pattern, mock testing)."
+description = "PureShell is a Python library for the \"Functional Core, Stateful Shell\" architectural pattern. It helps you write business logic as pure functions in Ruleset classes and manage state with StatefulEntity objects. This makes code more testable, maintainable, and understandable. Features include @shell_method for linking logic, @ruleset_provider for default behavior, and dynamic Ruleset injection for runtime flexibility (e.g., strategy pattern, mock testing)."
 authors = [
     { name="Dane Jones", email="danerjones@gmail.com" }
 ]
