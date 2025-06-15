@@ -3,7 +3,7 @@
 project = "pureshell"
 copyright = "2025, Dane Jones"
 author = "Dane Jones"
-release = "0.2.1"  # Synced for bump2version
+release = "0.2.2"  # Synced for bump2version
 
 extensions = [
     "sphinx.ext.autodoc",

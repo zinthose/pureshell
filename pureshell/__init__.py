@@ -3,7 +3,7 @@
 # __init__.py
 # pylint: disable=line-too-long,protected-access
 
-__version__ = "0.2.1"  # Synced for bump2version
+__version__ = "0.2.2"  # Synced for bump2version
 
 from typing import Any, Callable, Generic, TypeVar, Union, cast, overload
 
