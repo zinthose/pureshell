@@ -17,7 +17,37 @@ _ReturnType = TypeVar("_ReturnType")  # pylint: disable=invalid-name
 _sentinel = object()  # A unique sentinel value for default arguments
 
 
-class GetAttrNotFoundError(AttributeError):
+class PureShellError(Exception):
+    """Base class for all PureShell specific errors."""
+
+
+class RulesetProviderError(PureShellError, AttributeError):
+    """Error for issues related to ruleset providers."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class PureFunctionError(PureShellError, AttributeError):
+    """Error for issues related to pure functions within rulesets."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class LiveAttributeError(PureShellError, AttributeError):
+    """Error when a live attribute specified in @shell_method is not found."""
+
+    def __init__(self, attr_name: str, instance_cls_name: str):
+        super().__init__(
+            f"PureShell: Live attribute '{attr_name}' not found on "
+            f"instance of '{instance_cls_name}' when calling shell method."
+        )
+
+
+# Remove or repurpose GetAttrNotFoundError if LiveAttributeError covers its cases
+# For now, let's keep it if it's used elsewhere or has a subtly different meaning.
+class GetAttrNotFoundError(PureShellError, AttributeError):  # Make it a PureShellError
     """Custom error raised when an attribute is not found in the rules provider."""
 
     def __init__(self, attr_name: str, instance: Any):
@@ -107,7 +137,7 @@ class PureShellMethod(Generic[_ReturnType]):
                     f"when resolving shell method '{self.func_or_name}'. "
                     f"Use @ruleset_provider or set 'self._instance_rules'."
                 )
-                raise AttributeError(err_msg)  # Consider a custom error type here too
+                raise RulesetProviderError(err_msg)
             try:
                 actual_func_resolved = getattr(rules_source, self.func_or_name)
             except AttributeError as e:
@@ -123,7 +153,7 @@ class PureShellMethod(Generic[_ReturnType]):
                     f"(type: {type(rules_source).__name__}) "
                     f"for shell method in '{instance.__class__.__name__}'. "
                 )
-                raise AttributeError(err_msg) from e
+                raise PureFunctionError(err_msg) from e
         else:  # func_or_name is a direct callable
             actual_func_resolved = self.func_or_name
 
@@ -137,8 +167,7 @@ class PureShellMethod(Generic[_ReturnType]):
             for name in self.live_attr_names:
                 attr = getattr(instance, name, _sentinel)
                 if attr is _sentinel:
-                    # This can stay as GetAttrNotFoundError or be a new specific error
-                    raise GetAttrNotFoundError(name, instance)
+                    raise LiveAttributeError(name, instance.__class__.__name__)
                 live_data_values.append(attr)
             mutating_attr_index = 0 if self.mutates else -1
 
