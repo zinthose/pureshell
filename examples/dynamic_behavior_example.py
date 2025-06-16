@@ -117,6 +117,7 @@ class ConfigurableBot(StatefulEntity):
             rules_instance: An instance of a Ruleset class that defines the
                             bot's behavior.
         """
+        super().__init__()
         self.state = BotState(name=name)
         self._instance_rules = rules_instance  # Dynamic ruleset injection
 
