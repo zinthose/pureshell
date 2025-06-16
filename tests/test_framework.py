@@ -264,7 +264,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
             r"Use @ruleset_provider or set 'self\._instance_rules'\."
         )
         with self.assertRaisesRegex(RulesetProviderError, expected_error_regex):
-            await entity.get_value_async()
+            await entity.get_value_async()  # type: ignore[misc]
 
     async def test_async_shell_method_missing_pure_function(self):
         """Tests PureFunctionError for async method if pure function is missing."""
