@@ -2,7 +2,15 @@
 
 import unittest
 
-from pureshell import Ruleset, StatefulEntity, ruleset_provider, shell_method
+from pureshell import (
+    Ruleset,
+    StatefulEntity,
+    ruleset_provider,
+    shell_method,
+    RulesetProviderError,  # Import new error type
+    PureFunctionError,  # Import new error type
+    LiveAttributeError,  # Import new error type
+)
 
 # test_framework.py
 # pylint: disable=line-too-long,protected-access,wrong-import-position
@@ -21,7 +29,7 @@ class TestPatternEnforcement(unittest.TestCase):
     def test_stateful_entity_enforcement(self):
         """Ensures StatefulEntity rejects classes with raw business logic."""
         # Updated regex to match the more specific error message from StatefulEntity
-        expected_error_regex = r"Class '.*' has an implemented method '.*'"
+        expected_error_regex = r"Class \'.*\' has an implemented method \'.*\'"
         with self.assertRaisesRegex(TypeError, expected_error_regex):
             # This class definition should fail at import time because it violates
             # the StatefulEntity contract.
@@ -72,7 +80,7 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
                 # If not, it will use RulesA from @ruleset_provider
                 # Or if _instance_rules is explicitly set to None, it also uses RulesA
 
-            @shell_method("data")  # Infers pure_func='get_value'
+            @shell_method("data")  # Infers pure_func=\'get_value\'
             def get_value(self) -> str:
                 raise NotImplementedError()
 
@@ -111,12 +119,74 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
         entity_no_rules_at_all = EntityNoDefaultRules(5)
         # Updated regex to match the new error message format
         expected_error_regex = (
-            r"PureShell: Rules provider not found for 'EntityNoDefaultRules' "
-            r"when resolving shell method 'get_value'. "
-            r"Use @ruleset_provider or set 'self._instance_rules'."
+            r"PureShell: Rules provider not found for "
+            r"'EntityNoDefaultRules' "
+            r"when resolving shell method 'get_value'\. "
+            r"Use @ruleset_provider or set 'self\._instance_rules'\."
         )
-        with self.assertRaisesRegex(AttributeError, expected_error_regex):
+
+        # Use new error type
+        with self.assertRaisesRegex(RulesetProviderError, expected_error_regex):
             entity_no_rules_at_all.get_value()
+
+    def test_missing_pure_function_error(self):
+        """Tests that PureFunctionError is raised for a non-existent pure function."""
+
+        class SimpleRules(Ruleset):
+            @staticmethod
+            def existing_rule(data: int) -> int:
+                return data * 10
+
+        @ruleset_provider(SimpleRules)
+        class EntityWithMissingPureFunc(StatefulEntity):
+            def __init__(self, val: int):
+                self.value = val
+
+            # This shell_method points to a pure function that does not exist
+            @shell_method("value", pure_func="non_existent_rule")
+            def calculate(self) -> int:
+                raise NotImplementedError()
+
+        entity = EntityWithMissingPureFunc(5)
+        # Corrected regex to match the actual error message from __init__.py
+        expected_error_regex = (
+            r"PureShell: Pure function 'non_existent_rule' not found on "
+            r"rules provider 'SimpleRules' "
+            r"\(type: type\) "
+            r"for shell method in 'EntityWithMissingPureFunc'\. "
+        )
+        with self.assertRaisesRegex(PureFunctionError, expected_error_regex):
+            entity.calculate()  # This call should trigger the PureFunctionError
+
+    def test_missing_live_attribute_error(self):
+        """Tests that LiveAttributeError is raised for a non-existent live attribute."""
+
+        class SimpleRules(Ruleset):
+            @staticmethod
+            def process_data(data: int) -> int:  # Added a dummy pure function
+                return data
+
+        @ruleset_provider(SimpleRules)
+        class EntityWithMissingAttribute(StatefulEntity):
+            def __init__(self):
+                # self.actual_data is intentionally not defined
+                pass
+
+            # This shell_method points to a live_attribute that does not exist
+            @shell_method("non_existent_data", pure_func="process_data")
+            def get_processed_data(self) -> int:
+                raise NotImplementedError()
+
+        entity = EntityWithMissingAttribute()
+        # Corrected regex to match the actual error message from __init__.py
+        expected_error_regex = (
+            r"PureShell: Live attribute 'non_existent_data' not found on "
+            r"instance of 'EntityWithMissingAttribute' "
+            r"when calling shell method\."
+        )
+        with self.assertRaisesRegex(LiveAttributeError, expected_error_regex):
+            # This call should trigger the LiveAttributeError
+            entity.get_processed_data()
 
 
 if __name__ == "__main__":
