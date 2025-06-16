@@ -8,6 +8,7 @@ from pureshell import (
     StatefulEntity,
     ruleset_provider,
     shell_method,
+    PureShellMethod,  # Add PureShellMethod to imports
     RulesetProviderError,  # Import new error type
     PureFunctionError,  # Import new error type
     LiveAttributeError,  # Import new error type
@@ -54,6 +55,57 @@ class TestPatternEnforcement(unittest.TestCase):
                     """This should not be allowed."""
                     return True
 
+    def test_pureshellmethod_accessed_on_class(self):
+        """Test PureShellMethod descriptor access on the class itself."""
+
+        class MyRules(Ruleset):
+            @staticmethod
+            def my_pure_func(data: int) -> int:
+                return data
+
+        @ruleset_provider(MyRules)
+        class MyEntity(StatefulEntity):
+            data: int = 0
+
+            @shell_method("data")
+            def do_something(self) -> int:
+                raise NotImplementedError()
+
+        # Access the descriptor on the class, not an instance
+        descriptor = MyEntity.do_something
+        self.assertIsInstance(descriptor, PureShellMethod)
+        self.assertEqual(descriptor.live_attr_names, ("data",))
+        # It infers from method name
+        self.assertEqual(descriptor.func_or_name, "do_something")
+
+    def test_pureshellmethod_with_direct_callable(self):
+        """Test PureShellMethod with a direct callable instead of a name string."""
+
+        def external_pure_function(val: str) -> str:
+            return f"External: {val}"
+
+        class EntityWithDirectCallable(StatefulEntity):
+            text: str = "hello"
+
+            # Pass the actual function, not its name
+            process_text = PureShellMethod(external_pure_function, "text")
+
+        entity = EntityWithDirectCallable()
+        self.assertEqual(entity.process_text(), "External: hello")
+
+        # Test async direct callable
+        async def external_async_pure_function(val: str) -> str:
+            await asyncio.sleep(0.01)
+            return f"Async External: {val}"
+
+        class AsyncEntityWithDirectCallable(StatefulEntity):
+            text: str = "async_world"
+            process_text_async = PureShellMethod(external_async_pure_function, "text")
+
+        async_entity = AsyncEntityWithDirectCallable()
+        result = asyncio.run(async_entity.process_text_async())  # type: ignore
+        self.assertEqual(result, "Async External: async_world")
+
 
 class TestDynamicRulesetFeatures(unittest.TestCase):
     """Tests features related to dynamic ruleset assignment."""
@@ -76,6 +128,7 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
             def __init__(
                 self, initial_data: int, rules_instance: Ruleset | None = None
             ):
+                super().__init__()
                 self.data = initial_data
                 # Dynamically set instance rules if provided
                 if rules_instance:
@@ -91,6 +144,7 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
             def __init__(
                 self, initial_data: int, rules_instance: Ruleset | None = None
             ):
+                super().__init__()
                 self.data = initial_data
                 if rules_instance:
                     self._instance_rules = rules_instance
@@ -143,6 +197,7 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
         @ruleset_provider(SimpleRules)
         class EntityWithMissingPureFunc(StatefulEntity):
             def __init__(self, val: int):
+                super().__init__()
                 self.value = val
 
             # This shell_method points to a pure function that does not exist
@@ -173,7 +228,7 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
         class EntityWithMissingAttribute(StatefulEntity):
             def __init__(self):
                 # self.actual_data is intentionally not defined
-                pass
+                super().__init__()
 
             # This shell_method points to a live_attribute that does not exist
             @shell_method("non_existent_data", pure_func="process_data")
@@ -191,10 +246,94 @@ class TestDynamicRulesetFeatures(unittest.TestCase):
             # This call should trigger the LiveAttributeError
             entity.get_processed_data()
 
+    def test_sync_mutation_shell_method(self):
+        """Tests synchronous shell method with mutates=True."""
 
-# =============================================================================
+        class SyncMutationRules(Ruleset):
+            @staticmethod
+            def append_to_list(data_list: list, item: str) -> list:
+                # Ensures a new list is returned if mutation implies returning the new
+                # state. For PureShell, the pure function returns the new state,
+                # and the framework sets it.
+                new_list = list(data_list)  # Create a new list
+                new_list.append(item)
+                return new_list
+
+        @ruleset_provider(SyncMutationRules)
+        class SyncMutableEntity(StatefulEntity):
+            def __init__(self, initial_list: list):
+                self.my_list = initial_list
+                super().__init__()  # Ensure StatefulEntity init is called
+
+            @shell_method("my_list", pure_func="append_to_list", mutates=True)
+            def append_item(self, item: str) -> None:
+                raise NotImplementedError()
+
+        entity = SyncMutableEntity(["a"])
+        result = entity.append_item("b")  # Should mutate entity.my_list
+        self.assertIsNone(result)  # Mutating methods return None
+        self.assertEqual(entity.my_list, ["a", "b"])
+
+        entity.append_item("c")
+        self.assertEqual(entity.my_list, ["a", "b", "c"])
+
+    def test_stateful_entity_default_init_instance_rules(self):
+        """Tests StatefulEntity default __init__ behavior for _instance_rules."""
+
+        class BareEntity(StatefulEntity):
+            pass
+
+        # Scenario 1: No ruleset_instance provided, _instance_rules not pre-set
+        entity1 = BareEntity()
+        # StatefulEntity.__init__ should set self._instance_rules to None.
+        self.assertIsNone(entity1._instance_rules, "Scenario 1 Failed")
+
+        # Scenario 2: ruleset_instance is None,
+        # but subclass sets _instance_rules before super().__init__
+        class DummyRulesetForScenario2(Ruleset):  # Define a dummy ruleset
+            pass
+
+        dummy_rules = DummyRulesetForScenario2()
+
+        class EntitySetsInstanceRulesPreSuper(StatefulEntity):
+            def __init__(self):
+                self._instance_rules = dummy_rules  # Set with a Ruleset instance
+                super().__init__(ruleset_instance=None)
+
+        entity2 = EntitySetsInstanceRulesPreSuper()
+        # StatefulEntity.__init__ should not overwrite pre-set _instance_rules
+        # if ruleset_instance is None.
+        self.assertEqual(entity2._instance_rules, dummy_rules, "Scenario 2 Failed")
+
+        # Scenario 3: ruleset_instance is provided to super().__init__
+        class MyRulesForScenario3(Ruleset):  # Define a concrete Ruleset class
+            pass
+
+        class EntityPassesRulesToSuper(StatefulEntity):
+            def __init__(self):
+                passed_rules = MyRulesForScenario3()  # Instantiate it
+                super().__init__(ruleset_instance=passed_rules)
+
+        entity3 = EntityPassesRulesToSuper()
+        self.assertIsInstance(
+            entity3._instance_rules, MyRulesForScenario3, "Scenario 3 Failed"
+        )
+
+        # Scenario 4: Subclass __init__ doesn't set _instance_rules,
+        # no rules_instance to super() and no class-level _rules either.
+        class AnotherBareEntity(StatefulEntity):
+            def __init__(self):
+                # Does not set self._instance_rules
+                # Calls super with no args, so ruleset_instance will be None
+                super().__init__()
+
+        entity4 = AnotherBareEntity()
+        self.assertIsNone(entity4._instance_rules, "Scenario 4 Failed")
+
+
+# ==============================================================================
 # --- Test Suite for Async Features ---
-# =============================================================================
+# ==============================================================================
 class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
     """Tests asynchronous functionality including edge cases and error handling."""
 
@@ -210,6 +349,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         @ruleset_provider(AsyncRules)
         class AsyncEntity(StatefulEntity):
             def __init__(self, val: int):
+                super().__init__()
                 self.value = val
 
             @shell_method("value", pure_func="process_async")
@@ -232,6 +372,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         @ruleset_provider(AsyncMutationRules)
         class AsyncMutableEntity(StatefulEntity):
             def __init__(self, initial_value: int):
+                super().__init__()
                 self.value = initial_value
 
             @shell_method("value", pure_func="increment_async", mutates=True)
@@ -250,6 +391,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
 
         class EntityNeedsAsyncRules(StatefulEntity):
             def __init__(self, val: int):
+                super().__init__()
                 self.value = val
 
             @shell_method("value", pure_func="some_async_rule")
@@ -277,6 +419,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         @ruleset_provider(DummyAsyncRules)
         class EntityWithMissingAsyncPureFunc(StatefulEntity):
             def __init__(self, val: int):
+                super().__init__()
                 self.value = val
 
             @shell_method("value", pure_func="non_existent_async_rule")
@@ -304,7 +447,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         @ruleset_provider(AnotherAsyncRules)
         class EntityWithMissingAsyncAttribute(StatefulEntity):
             def __init__(self):
-                pass  # Intentionally not defining 'actual_data'
+                super().__init__()
 
             @shell_method(
                 "non_existent_async_data", pure_func="process_something_async"
@@ -342,6 +485,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         @ruleset_provider(MixedRules)
         class MixedEntity(StatefulEntity):
             def __init__(self, val: int):
+                super().__init__()
                 self.value = val
 
             @shell_method("value", pure_func="sync_rule")
@@ -375,6 +519,7 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         @ruleset_provider(SyncPureFuncRules)
         class EntityAsyncShellSyncPure(StatefulEntity):
             def __init__(self, val: int):
+                super().__init__()
                 self.value = val
 
             @shell_method("value", pure_func="strictly_sync_rule")
@@ -392,8 +537,79 @@ class TestAsyncFeatures(unittest.IsolatedAsyncioTestCase):
         # This message comes from Python's asyncio internals
         # when `await` is used on non-awaitable
         self.assertIn(
-            "object str can't be used in 'await' expression", str(cm.exception).lower()
+            "object str can't be used in 'await' expression",
+            str(cm.exception).lower(),
         )
+
+    async def test_stateful_entity_subclass_with_non_callable_attributes(self):
+        """
+        Tests that StatefulEntity subclasses can have non-callable attributes
+        without raising an error during class creation.
+        This is to cover the else path of `if callable(value):` in __init_subclass__.
+        """
+        try:
+
+            class EntityWithDataMember(StatefulEntity):
+                some_data: int = 123
+                another_attribute = "test"
+                # No methods, only data attributes
+
+        except TypeError:
+            self.fail("StatefulEntity raised TypeError unexpectedly for data members.")
+
+    def test_stateful_entity_subclass_with_various_valid_members(self):
+        """
+        Tests that StatefulEntity.__init_subclass__ correctly skips various
+        valid member types (dunder, _rules, _instance_rules, PureShellMethod,
+        side_effect_method, property).
+        """
+
+        class MyPsmRules(Ruleset):
+            @staticmethod
+            def psm_rule(x: int) -> int:
+                return x
+
+        try:
+
+            class ComprehensiveEntity(StatefulEntity):
+                _rules = MyPsmRules  # Class-level rules
+                _instance_rules = None  # Instance-level rules placeholder
+                __custom_dunder__ = "dunder_value"
+                regular_data: int = 10
+
+                @shell_method("regular_data", pure_func="psm_rule")
+                def normal_shell_method(self) -> int:
+                    raise NotImplementedError()
+
+                @property
+                def my_property(self) -> int:
+                    return self.regular_data * 2
+
+                @my_property.setter
+                def my_property(self, value: int) -> None:
+                    self.regular_data = value // 2
+
+                # Not decorated, but starts with _
+                def _internal_helper(self):
+                    # Should be skipped by convention,
+                    # though not explicitly by current logic
+                    pass
+
+                # This would normally be caught, but we are testing the skipping logic
+                # so we need to ensure other skips work.
+                # def problematic_method(self): return "problem"
+
+            # Instantiation to ensure no runtime errors from __init__ either
+            entity = ComprehensiveEntity()
+            self.assertEqual(entity.normal_shell_method(), 10)
+            self.assertEqual(entity.my_property, 20)
+            entity.my_property = 30
+            self.assertEqual(entity.regular_data, 15)
+
+        except TypeError as e:
+            self.fail(
+                f"StatefulEntity.__init_subclass__ raised TypeError unexpectedly: {e}"
+            )
 
 
 if __name__ == "__main__":

@@ -45,18 +45,6 @@ class LiveAttributeError(PureShellError, AttributeError):
         )
 
 
-# Remove or repurpose GetAttrNotFoundError if LiveAttributeError covers its cases
-# For now, let's keep it if it's used elsewhere or has a subtly different meaning.
-class GetAttrNotFoundError(PureShellError, AttributeError):  # Make it a PureShellError
-    """Custom error raised when an attribute is not found in the rules provider."""
-
-    def __init__(self, attr_name: str, instance: Any):
-        super().__init__(
-            f"Attribute '{attr_name}' listed in @shell_method not"
-            f" found on instance of '{instance.__class__.__name__}'."
-        )
-
-
 class PureShellMethod(Generic[_ReturnType]):
     """
     A generic descriptor that creates a "lazy" partial function.
@@ -305,8 +293,12 @@ class StatefulEntity:
         """Enforces that no methods in subclasses are actual implementations."""
         super().__init_subclass__(**kwargs)
         for name, value in vars(cls).items():
-            if name.startswith("__") or name in ("_rules", "_instance_rules"):
-                continue  # Skip dunder methods, _rules, and _instance_rules
+            if (
+                name.startswith("__")
+                or name.startswith("_")  # Skip internal methods by convention
+                or name in ("_rules", "_instance_rules")
+            ):
+                continue  # Skip dunder, internal, _rules, and _instance_rules
 
             # Check if it's a PureShellMethod (already processed)
             if isinstance(value, PureShellMethod):
